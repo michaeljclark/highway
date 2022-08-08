@@ -2289,6 +2289,46 @@ HWY_API V CombineShiftRightBytes(Full512<T> d, V hi, V lo) {
                         BitCast(d8, hi).raw, BitCast(d8, lo).raw, kBytes)});
 }
 
+// ------------------------------ CombineShiftRightLanes
+
+#if HWY_TARGET >= HWY_AVX3
+
+template <int kLanes, typename T>
+HWY_API Vec256<int32_t> CombineShiftRightLanes(Full256<T> d, Vec256<int32_t> hi, Vec256<int32_t> lo) {
+  return BitCast(d, Vec256<int32_t>{_mm256_alignr_epi32(hi.raw, lo.raw, kLanes)});
+}
+template <int kLanes, typename T>
+HWY_API Vec256<int64_t> CombineShiftRightLanes(Full256<T> d, Vec256<int64_t> hi, Vec256<int64_t> lo) {
+  return BitCast(d, Vec256<int64_t>{_mm256_alignr_epi64(hi.raw, lo.raw, kLanes)});
+}
+template <int kLanes, typename T>
+HWY_API Vec256<uint32_t> CombineShiftRightLanes(Full256<T> d, Vec256<uint32_t> hi, Vec256<uint32_t> lo) {
+  return BitCast(d, Vec256<uint32_t>{_mm256_alignr_epi32(hi.raw, lo.raw, kLanes)});
+}
+template <int kLanes, typename T>
+HWY_API Vec256<uint64_t> CombineShiftRightLanes(Full256<T> d, Vec256<uint64_t> hi, Vec256<uint64_t> lo) {
+  return BitCast(d, Vec256<uint64_t>{_mm256_alignr_epi64(hi.raw, lo.raw, kLanes)});
+}
+
+#endif
+
+template <int kLanes, typename T>
+HWY_API Vec512<int32_t> CombineShiftRightLanes(Full512<T> d, Vec512<int32_t> hi, Vec512<int32_t> lo) {
+  return BitCast(d, Vec512<int32_t>{_mm512_alignr_epi32(hi.raw, lo.raw, kLanes)});
+}
+template <int kLanes, typename T>
+HWY_API Vec512<int64_t> CombineShiftRightLanes(Full512<T> d, Vec512<int64_t> hi, Vec512<int64_t> lo) {
+  return BitCast(d, Vec512<int64_t>{_mm512_alignr_epi64(hi.raw, lo.raw, kLanes)});
+}
+template <int kLanes, typename T>
+HWY_API Vec512<uint32_t> CombineShiftRightLanes(Full512<T> d, Vec512<uint32_t> hi, Vec512<uint32_t> lo) {
+  return BitCast(d, Vec512<uint32_t>{_mm512_alignr_epi32(hi.raw, lo.raw, kLanes)});
+}
+template <int kLanes, typename T>
+HWY_API Vec512<uint64_t> CombineShiftRightLanes(Full512<T> d, Vec512<uint64_t> hi, Vec512<uint64_t> lo) {
+  return BitCast(d, Vec512<uint64_t>{_mm512_alignr_epi64(hi.raw, lo.raw, kLanes)});
+}
+
 // ------------------------------ Broadcast/splat any lane
 
 // Unsigned
@@ -2480,6 +2520,11 @@ template <typename T, typename TI>
 HWY_API Indices512<T> SetTableIndices(const Full512<T> d, const TI* idx) {
   const Rebind<TI, decltype(d)> di;
   return IndicesFromVec(d, LoadU(di, idx));
+}
+
+template <typename T, HWY_IF_LANE_SIZE(T, 2)>
+HWY_API Vec512<T> TableLookupLanes(Vec512<T> v, Indices512<T> idx) {
+  return Vec512<T>{_mm512_permutexvar_epi16(idx.raw, v.raw)};
 }
 
 template <typename T, HWY_IF_LANE_SIZE(T, 4)>
@@ -3137,6 +3182,37 @@ HWY_API Vec512<int32_t> PromoteTo(Full512<int32_t> /* tag */,
 HWY_API Vec512<int64_t> PromoteTo(Full512<int64_t> /* tag */,
                                   Vec256<int32_t> v) {
   return Vec512<int64_t>{_mm512_cvtepi32_epi64(v.raw)};
+}
+
+// {i8} -> {i64}
+HWY_API Vec512<int64_t> PromoteTo(Full512<int64_t> /* tag */,
+                                  Vec128<int8_t, 8> v) {
+  return Vec512<int64_t>{_mm512_cvtepi8_epi64(v.raw)};
+}
+// {i16} -> {i64}
+HWY_API Vec512<int64_t> PromoteTo(Full512<int64_t> /* tag */,
+                                  Vec128<int16_t> v) {
+  return Vec512<int64_t>{_mm512_cvtepi16_epi64(v.raw)};
+}
+// {u8} -> {u64}
+HWY_API Vec512<uint64_t> PromoteTo(Full512<uint64_t> /* tag */,
+                                  Vec128<uint8_t, 8> v) {
+  return Vec512<uint64_t>{_mm512_cvtepu8_epi64(v.raw)};
+}
+// {u16} -> {u64}
+HWY_API Vec512<uint64_t> PromoteTo(Full512<uint64_t> /* tag */,
+                                  Vec128<uint16_t> v) {
+  return Vec512<uint64_t>{_mm512_cvtepu16_epi64(v.raw)};
+}
+// {u8} -> {i64}
+HWY_API Vec512<int64_t> PromoteTo(Full512<int64_t> /* tag */,
+                                  Vec128<uint8_t, 8> v) {
+  return Vec512<int64_t>{_mm512_cvtepu8_epi64(v.raw)};
+}
+// {u16} -> {i64}
+HWY_API Vec512<int64_t> PromoteTo(Full512<int64_t> /* tag */,
+                                  Vec128<uint16_t> v) {
+  return Vec512<int64_t>{_mm512_cvtepu16_epi64(v.raw)};
 }
 
 // Float

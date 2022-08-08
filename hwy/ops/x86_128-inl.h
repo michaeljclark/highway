@@ -4032,6 +4032,25 @@ HWY_API V CombineShiftRightBytes(Simd<T, N, 0> d, V hi, V lo) {
   return V{BitCast(Full128<T>(), r).raw};
 }
 
+// ------------------------------ CombineShiftRightLanes
+
+template <int kLanes, typename T>
+HWY_API Vec128<int32_t> CombineShiftRightLanes(Full128<T> d, Vec128<int32_t> hi, Vec128<int32_t> lo) {
+  return BitCast(d, Vec128<int64_t>{_mm_alignr_epi8(hi.raw, lo.raw, kLanes * 4)});
+}
+template <int kLanes, typename T>
+HWY_API Vec128<int64_t> CombineShiftRightLanes(Full128<T> d, Vec128<int64_t> hi, Vec128<int64_t> lo) {
+  return BitCast(d, Vec128<int64_t>{_mm_alignr_epi8(hi.raw, lo.raw, kLanes * 8)});
+}
+template <int kLanes, typename T>
+HWY_API Vec128<uint32_t> CombineShiftRightLanes(Full128<T> d, Vec128<uint32_t> hi, Vec128<uint32_t> lo) {
+  return BitCast(d, Vec128<uint64_t>{_mm_alignr_epi8(hi.raw, lo.raw, kLanes * 4)});
+}
+template <int kLanes, typename T>
+HWY_API Vec128<uint64_t> CombineShiftRightLanes(Full128<T> d, Vec128<uint64_t> hi, Vec128<uint64_t> lo) {
+  return BitCast(d, Vec128<uint64_t>{_mm_alignr_epi8(hi.raw, lo.raw, kLanes * 8)});
+}
+
 // ------------------------------ Broadcast/splat any lane
 
 // Unsigned
@@ -4100,6 +4119,18 @@ struct Indices128 {
   __m128i raw;
 };
 
+// todo: this needs translation of short indices to byte indices.
+// this method has been added so that constexpr if can be used for
+// short indices on AVX-512. constexpr if requires the compiled
+// out code to pass method lookup so it compiles with SSE4/AVX.
+
+template <typename T, size_t N, typename TI, HWY_IF_LE128(T, N),
+          HWY_IF_LANE_SIZE(T, 2)>
+HWY_API Indices128<T, N> IndicesFromVec(Simd<T, N, 0> d, Vec128<TI, N> vec) {
+  (void)d;
+  return Indices128<T, N>{vec.raw};
+}
+
 template <typename T, size_t N, typename TI, HWY_IF_LE128(T, N),
           HWY_IF_LANE_SIZE(T, 4)>
 HWY_API Indices128<T, N> IndicesFromVec(Simd<T, N, 0> d, Vec128<TI, N> vec) {
@@ -4152,6 +4183,12 @@ template <typename T, size_t N, typename TI, HWY_IF_LE128(T, N)>
 HWY_API Indices128<T, N> SetTableIndices(Simd<T, N, 0> d, const TI* idx) {
   const Rebind<TI, decltype(d)> di;
   return IndicesFromVec(d, LoadU(di, idx));
+}
+
+// short depends on IndicesFromVec translating to byte indices
+template <typename T, size_t N, HWY_IF_LANE_SIZE(T, 2)>
+HWY_API Vec128<T, N> TableLookupLanes(Vec128<T, N> v, Indices128<T, N> idx) {
+  return TableLookupBytes(v, Vec128<T, N>{idx.raw});
 }
 
 template <typename T, size_t N, HWY_IF_LANE_SIZE(T, 4)>
@@ -5290,6 +5327,81 @@ HWY_API Vec128<int32_t, N> PromoteTo(Simd<int32_t, N, 0> /* tag */,
 #endif
 }
 
+// {i8} -> {i64}
+template <size_t N>
+HWY_API Vec128<int64_t, N> PromoteTo(Simd<int64_t, N, 0> /* tag */,
+                                  const Vec128<int8_t, N> v) {
+#if HWY_TARGET == HWY_SSSE3
+  const __m128i x2 = _mm_unpacklo_epi8(v.raw, v.raw);
+  const __m128i x4 = _mm_unpacklo_epi16(x2, x2);
+  const __m128i x8 = _mm_unpacklo_epi32(x4, x4);
+  return ShiftRight<56>(Vec128<int64_t, N>{x8});
+#else
+  return Vec128<int64_t, N>{_mm_cvtepi8_epi64(v.raw)};
+#endif
+}
+// {i16} -> {i64}
+template <size_t N>
+HWY_API Vec128<int64_t, N> PromoteTo(Simd<int64_t, N, 0> /* tag */,
+                                  const Vec128<int16_t, N> v) {
+#if HWY_TARGET == HWY_SSSE3
+  const __m128i x2 = _mm_unpacklo_epi16(v.raw, v.raw);
+  const __m128i x4 = _mm_unpacklo_epi32(x2, x2);
+  return ShiftRight<48>(Vec128<int64_t, N>{x4});
+#else
+  return Vec128<int64_t, N>{_mm_cvtepi16_epi64(v.raw)};
+#endif
+}
+// {u8} -> {u64}
+template <size_t N>
+HWY_API Vec128<uint64_t, N> PromoteTo(Simd<uint64_t, N, 0> /* tag */,
+                                  const Vec128<uint8_t, N> v) {
+#if HWY_TARGET == HWY_SSSE3
+  const __m128i x2 = _mm_unpacklo_epi8(v.raw, _mm_set1_epi8(0));
+  const __m128i x4 = _mm_unpacklo_epi16(x2, _mm_set1_epi16(0));
+  const __m128i x8 = _mm_unpacklo_epi32(x4, _mm_set1_epi32(0));
+  return Vec128<uint64_t, N>{x8};
+#else
+  return Vec128<uint64_t, N>{_mm_cvtepu8_epi64(v.raw)};
+#endif
+}
+// {u16} -> {u64}
+template <size_t N>
+HWY_API Vec128<uint64_t, N> PromoteTo(Simd<uint64_t, N, 0> /* tag */,
+                                  const Vec128<uint16_t, N> v) {
+#if HWY_TARGET == HWY_SSSE3
+  const __m128i x2 = _mm_unpacklo_epi16(v.raw, _mm_set1_epi16(0));
+  const __m128i x4 = _mm_unpacklo_epi32(x2, _mm_set1_epi32(0));
+  return Vec128<uint64_t, N>{x4};
+#else
+  return Vec128<uint64_t, N>{_mm_cvtepu16_epi64(v.raw)};
+#endif
+}
+// {u8} -> {i64}
+template <size_t N>
+HWY_API Vec128<int64_t, N> PromoteTo(Simd<int64_t, N, 0> /* tag */,
+                                  const Vec128<uint8_t, N> v) {
+#if HWY_TARGET == HWY_SSSE3
+  const __m128i x2 = _mm_unpacklo_epi8(v.raw, _mm_set1_epi8(0));
+  const __m128i x4 = _mm_unpacklo_epi16(x2, _mm_set1_epi16(0));
+  const __m128i x8 = _mm_unpacklo_epi32(x4, _mm_set1_epi32(0));
+  return Vec128<int64_t, N>{x8};
+#else
+  return Vec128<int64_t, N>{_mm_cvtepu8_epi64(v.raw)};
+#endif
+}
+// {u16} -> {i64}
+template <size_t N>
+HWY_API Vec128<int64_t, N> PromoteTo(Simd<int64_t, N, 0> /* tag */,
+                                  const Vec128<uint16_t, N> v) {
+#if HWY_TARGET == HWY_SSSE3
+  const __m128i x2 = _mm_unpacklo_epi16(v.raw, _mm_set1_epi16(0));
+  const __m128i x4 = _mm_unpacklo_epi32(x2, _mm_set1_epi32(0));
+  return Vec128<int64_t, N>{x4};
+#else
+  return Vec128<int64_t, N>{_mm_cvtepu16_epi64(v.raw)};
+#endif
+}
 // Workaround for origin tracking bug in Clang msan prior to 11.0
 // (spurious "uninitialized memory" for TestF16 with "ORIGIN: invalid")
 #if HWY_IS_MSAN && (HWY_COMPILER_CLANG != 0 && HWY_COMPILER_CLANG < 1100)

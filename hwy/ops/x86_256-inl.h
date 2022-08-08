@@ -2786,6 +2786,72 @@ HWY_API V CombineShiftRightBytes(Full256<T> d, V hi, V lo) {
                         BitCast(d8, hi).raw, BitCast(d8, lo).raw, kBytes)});
 }
 
+// ------------------------------ CombineShiftRightLanes
+
+#if HWY_TARGET < HWY_AVX3
+
+template <int kLanes, typename T>
+HWY_API Vec256<int32_t> CombineShiftRightLanes(Full256<T> d, Vec256<int32_t> hi, Vec256<int32_t> lo) {
+  alignas(32) constexpr uint32_t kPermWord[8][8] = {
+    { 7, 6, 5, 4, 3, 2, 1, 0 },
+    { 0, 7, 6, 5, 4, 3, 2, 1 },
+    { 1, 0, 7, 6, 5, 4, 3, 2 },
+    { 2, 1, 0, 7, 6, 5, 4, 3 },
+    { 3, 2, 1, 0, 7, 6, 5, 4 },
+    { 4, 3, 2, 1, 0, 7, 6, 5 },
+    { 5, 4, 3, 2, 1, 0, 7, 6 },
+    { 6, 5, 4, 3, 2, 1, 0, 7 }
+  };
+  Vec256<int32_t> v1 = Vec256<int32_t>{ _mm256_permutevar8x32_epi32(lo.raw, SetTableIndices(d, kPermWord[kLanes]).raw) };
+  Vec256<int32_t> v2 = Vec256<int32_t>{ _mm256_permutevar8x32_epi32(hi.raw, SetTableIndices(d, kPermWord[8-kLanes]).raw) };
+  return BitCast(d, IfThenElse(FirstN(d, 8-kLanes), v1, v2));
+}
+
+template <int kLanes, typename T>
+HWY_API Vec256<int64_t> CombineShiftRightLanes(Full256<T> d, Vec256<int64_t> hi, Vec256<int64_t> lo) {
+  constexpr uint8_t kPermByte[8] = {
+    /* 3, 2, 1, 0 */ 0b11100100,
+    /* 0, 3, 2, 1 */ 0b00111001,
+    /* 1, 0, 3, 2 */ 0b01001110,
+    /* 2, 1, 0, 3 */ 0b10010011
+  };
+  Vec256<int64_t> v1 = Vec256<int64_t>{ _mm256_permute4x64_epi64(lo.raw, kPermByte[kLanes]) };
+  Vec256<int64_t> v2 = Vec256<int64_t>{ _mm256_permute4x64_epi64(hi.raw, kPermByte[8-kLanes]) };
+  return BitCast(d, IfThenElse(FirstN(d, 8-kLanes), v1, v2));
+}
+
+template <int kLanes, typename T>
+HWY_API Vec256<uint32_t> CombineShiftRightLanes(Full256<T> d, Vec256<uint32_t> hi, Vec256<uint32_t> lo) {
+  alignas(32) constexpr uint32_t kPermWord[8][8] = {
+    { 7, 6, 5, 4, 3, 2, 1, 0 },
+    { 0, 7, 6, 5, 4, 3, 2, 1 },
+    { 1, 0, 7, 6, 5, 4, 3, 2 },
+    { 2, 1, 0, 7, 6, 5, 4, 3 },
+    { 3, 2, 1, 0, 7, 6, 5, 4 },
+    { 4, 3, 2, 1, 0, 7, 6, 5 },
+    { 5, 4, 3, 2, 1, 0, 7, 6 },
+    { 6, 5, 4, 3, 2, 1, 0, 7 }
+  };
+  Vec256<uint32_t> v1 = Vec256<uint32_t>{ _mm256_permutevar8x32_epi32(lo.raw, SetTableIndices(d, kPermWord[kLanes]).raw) };
+  Vec256<uint32_t> v2 = Vec256<uint32_t>{ _mm256_permutevar8x32_epi32(hi.raw, SetTableIndices(d, kPermWord[8-kLanes]).raw) };
+  return BitCast(d, IfThenElse(FirstN(d, 8-kLanes), v1, v2));
+}
+
+template <int kLanes, typename T>
+HWY_API Vec256<uint64_t> CombineShiftRightLanes(Full256<T> d, Vec256<uint64_t> hi, Vec256<uint64_t> lo) {
+  constexpr uint8_t kPermByte[8] = {
+    /* 3, 2, 1, 0 */ 0b11100100,
+    /* 0, 3, 2, 1 */ 0b00111001,
+    /* 1, 0, 3, 2 */ 0b01001110,
+    /* 2, 1, 0, 3 */ 0b10010011
+  };
+  Vec256<uint64_t> v1 = Vec256<uint64_t>{ _mm256_permute4x64_epi64(lo.raw, kPermByte[kLanes]) };
+  Vec256<uint64_t> v2 = Vec256<uint64_t>{ _mm256_permute4x64_epi64(hi.raw, kPermByte[8-kLanes]) };
+  return BitCast(d, IfThenElse(FirstN(d, 8-kLanes), v1, v2));
+}
+
+#endif
+
 // ------------------------------ Broadcast/splat any lane
 
 // Unsigned
@@ -3937,6 +4003,37 @@ HWY_API Vec256<int32_t> PromoteTo(Full256<int32_t> /* tag */,
 HWY_API Vec256<int64_t> PromoteTo(Full256<int64_t> /* tag */,
                                   Vec128<int32_t> v) {
   return Vec256<int64_t>{_mm256_cvtepi32_epi64(v.raw)};
+}
+
+// {i8} -> {i64}
+HWY_API Vec256<int64_t> PromoteTo(Full256<int64_t> /* tag */,
+                                  Vec128<int8_t,4> v) {
+  return Vec256<int64_t>{_mm256_cvtepi8_epi64(v.raw)};
+}
+// {i16} -> {i64}
+HWY_API Vec256<int64_t> PromoteTo(Full256<int64_t> /* tag */,
+                                  Vec128<int16_t,4> v) {
+  return Vec256<int64_t>{_mm256_cvtepi16_epi64(v.raw)};
+}
+// {u8} -> {u64}
+HWY_API Vec256<uint64_t> PromoteTo(Full256<uint64_t> /* tag */,
+                                  Vec128<uint8_t, 4> v) {
+  return Vec256<uint64_t>{_mm256_cvtepu8_epi64(v.raw)};
+}
+// {u16} -> {u64}
+HWY_API Vec256<uint64_t> PromoteTo(Full256<uint64_t> /* tag */,
+                                  Vec128<uint16_t, 4> v) {
+  return Vec256<uint64_t>{_mm256_cvtepu16_epi64(v.raw)};
+}
+// {u8} -> {i64}
+HWY_API Vec256<int64_t> PromoteTo(Full256<int64_t> /* tag */,
+                                  Vec128<uint8_t, 4> v) {
+  return Vec256<int64_t>{_mm256_cvtepu8_epi64(v.raw)};
+}
+// {u16} -> {i64}
+HWY_API Vec256<int64_t> PromoteTo(Full256<int64_t> /* tag */,
+                                  Vec128<uint16_t, 4> v) {
+  return Vec256<int64_t>{_mm256_cvtepu16_epi64(v.raw)};
 }
 
 // ------------------------------ Demotions (full -> part w/ narrow lanes)
